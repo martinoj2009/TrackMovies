@@ -1,12 +1,17 @@
 #!/usr/bin/python3
 
+import configparser
 import datetime
 import glob
 import os
 import sqlite3
 import sys
 
-from imdbpie import Imdb
+try:
+    from imdbpie import Imdb
+except:
+    sys.stderr.write('Whoa! I had an issue loading the imdbpie Python module. You might want to install that first!\n')
+    sys.exit(-1)
 
 __version__ = '0.1'
 __author__ = 'Martino Jones'
@@ -14,12 +19,37 @@ __author__ = 'Martino Jones'
 
 # This script will monitor the movies in a directory and let you know when new movies are added
 def main():
-    print('Starting Track Movies '
-          + __version__
-          + ' by: '
-          + __author__)
+    sys.stdout.write('Starting Track Movies '
+                     + __version__
+                     + ' by: '
+                     + __author__ + '\n')
 
     SCRIPTPATH = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+    # Read in the config file, unless it doesn't exist then check ARGS
+    if os.path.isfile(SCRIPTPATH + '/config'):
+        paths = parseconfig(SCRIPTPATH + '/config')
+
+    if len(sys.argv) > 1:
+        paths = paths + sys.argv[1:]
+
+    # Make sure we have paths to work with
+    if len(paths) == 0:
+        sys.stderr.write(
+            'Whoa! I couldn\'t find a path.\n Please make a config file with the path in it, or pass the path in as an argument.\n')
+        sys.stderr.write('The layout for the config file should look something like:\n'
+                         '[NAME OF LIB]\n'
+                         'path = ROOT LOCATION OF MOVIES\n'
+                         '\n'
+                         'Example: \n'
+                         '[movies1]\n'
+                         'path = /home/martino/movies/\n')
+        sys.exit(-11)
+
+    # Display the paths found
+    sys.stdout.write('Found the following paths for your content:\n')
+    for PATH in paths:
+        sys.stdout.write(PATH + '\n')
 
     # Empty until we get a database connection
     connection = ''
@@ -33,7 +63,9 @@ def main():
         database = sqlite3.connect(SCRIPTPATH + '/movies.db')
 
     # Get the files needed
-    moviePaths = getFiles('/home/martino/plex/movies/')
+    moviePaths = []
+    for PATH in paths:
+        moviePaths = moviePaths + getFiles(PATH)
 
     # Make sure we actually have movies we can work with, or this script is pointless
     if len(moviePaths) == 0:
@@ -129,7 +161,7 @@ def addToDatabase(PATH, NAME, FOUND, database):
     try:
         cursor.execute('''
         INSERT INTO movies(path, name, found)
-        VALUES(?,?,?)''', (PATH, NAME, FOUND))
+        VALUES(?,?,?)''', (str(PATH), str(NAME), str(FOUND)))
     except sqlite3.IntegrityError:
         return 150
 
@@ -234,6 +266,26 @@ def formatMovieHtml(movie):
         getMoviePoster(movie)) + '" alt="' + movie + '" style="width:304px;height:400px;"></p>' + '</p>'
 
     return HTML
+
+
+def parseconfig(PATH):
+    __doc__ = 'This will parse the config file and return the config as dict'
+
+    paths = []
+
+    if os.path.isfile(PATH):
+        config = configparser.ConfigParser()
+        config.read(PATH)
+    else:
+        return ''
+
+    # Get the path of the movies
+    for KEY in config.keys():
+        if 'path' in config[KEY]:
+            if os.path.isdir(config[KEY]['path']):
+                paths.append(config[KEY]['path'])
+
+    return paths
 
 
 if __name__ == '__main__':
